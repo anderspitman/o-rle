@@ -28,6 +28,93 @@ pub fn greet() {
     alert("Hello, o-rle!");
 }
 
+#[wasm_bindgen]
+pub fn parse(rle_text: &str) -> PatternIter {
+    let mut pattern = Pattern::new();
+    let mut parser = Parser::new();
+    parser.parse(rle_text);
+
+    pattern.width = parser.rows[0].len();
+    pattern.height = parser.rows.len();
+
+    // TODO: modify the existing vec rather than making a new one
+    pattern.grid = vec![0; pattern.width * pattern.height];
+
+    let mut row_index = 0;
+    let mut col_index = 0;
+
+    for row in parser.rows {
+        for cell in row {
+            let i = (row_index * pattern.width) + col_index;
+            pattern.grid[i] = cell;
+
+            col_index += 1;
+            if col_index == pattern.width {
+                col_index = 0;
+                row_index += 1;
+            }
+        }
+    }
+
+    PatternIter::new(pattern)
+}
+
+#[wasm_bindgen]
+pub struct Pattern {
+    grid: Vec<u8>,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+pub struct PatternIter {
+    pattern: Pattern,
+    row_index: usize,
+}
+
+impl PatternIter {
+    fn new(pattern: Pattern) -> PatternIter {
+        PatternIter {
+            pattern: pattern,
+            row_index: 0,
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl PatternIter {
+    pub fn next(&mut self) -> Option<Vec<u8>> {
+        if self.row_index < self.pattern.height {
+
+            let mut v = vec![0; self.pattern.width];
+            let i = self.row_index * self.pattern.width;
+            v.copy_from_slice(&self.pattern.grid[i..i+self.pattern.width]);
+
+            self.row_index += 1;
+
+            Some(v)
+        }
+        else {
+            None
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl Pattern {
+    pub fn new() -> Pattern {
+        Pattern {
+            grid: Vec::new(),
+            width: 0,
+            height: 0,
+        }
+    }
+
+    pub fn get_grid(&self) -> Vec<u8> {
+        self.grid.clone()
+    }
+}
+
 pub struct Parser {
     pub rows: Vec<Vec<u8>>,
     digits: Vec<char>,
@@ -183,5 +270,21 @@ o3bob2o4bobo11b$10bo5bo7bo11b$11bo3bo20b$12b2o!";
                 assert_eq!(parser.rows[y][x], *cell as u8);
             }
         }
+    }
+
+    #[test]
+    fn parse_function() {
+        let rle_text = "\
+#N Glider
+#O Richard K. Guy
+#C The smallest, most common, and first discovered spaceship. Diagonal, has period 4 and speed c/4.
+#C www.conwaylife.com/wiki/index.php?title=Glider
+x = 3, y = 3, rule = B3/S23
+bob$2bo$3o!";
+
+        let pattern = parse(rle_text);
+        assert_eq!(pattern.width, 3);
+        assert_eq!(pattern.height, 3);
+        assert_eq!(pattern.grid, [0,1,0, 0,0,1, 1,1,1]);
     }
 }
