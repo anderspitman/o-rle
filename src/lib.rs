@@ -67,6 +67,23 @@ pub struct Pattern {
 }
 
 #[wasm_bindgen]
+impl Pattern {
+    pub fn new() -> Pattern {
+        Pattern {
+            grid: Vec::new(),
+            width: 0,
+            height: 0,
+        }
+    }
+}
+
+impl Pattern {
+    pub fn get_grid(&self) -> Vec<u8> {
+        self.grid.clone()
+    }
+}
+
+#[wasm_bindgen]
 pub struct PatternIter {
     pattern: Pattern,
     row_index: usize,
@@ -99,22 +116,6 @@ impl PatternIter {
         }
     }
 }
-
-#[wasm_bindgen]
-impl Pattern {
-    pub fn new() -> Pattern {
-        Pattern {
-            grid: Vec::new(),
-            width: 0,
-            height: 0,
-        }
-    }
-
-    pub fn get_grid(&self) -> Vec<u8> {
-        self.grid.clone()
-    }
-}
-
 pub struct Parser {
     pub rows: Vec<Vec<u8>>,
     digits: Vec<char>,
@@ -282,9 +283,15 @@ o3bob2o4bobo11b$10bo5bo7bo11b$11bo3bo20b$12b2o!";
 x = 3, y = 3, rule = B3/S23
 bob$2bo$3o!";
 
-        let pattern = parse(rle_text);
-        assert_eq!(pattern.width, 3);
-        assert_eq!(pattern.height, 3);
-        assert_eq!(pattern.grid, [0,1,0, 0,0,1, 1,1,1]);
+        let mut pattern_iter = parse(rle_text);
+
+        let mut row = pattern_iter.next();
+        assert_eq!(row.unwrap(), [0,1,0]);
+        row = pattern_iter.next();
+        assert_eq!(row.unwrap(), [0,0,1]);
+        row = pattern_iter.next();
+        assert_eq!(row.unwrap(), [1,1,1]);
+        row = pattern_iter.next();
+        assert_eq!(row, None);
     }
 }
