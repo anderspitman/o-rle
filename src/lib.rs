@@ -30,31 +30,8 @@ pub fn greet() {
 
 #[wasm_bindgen]
 pub fn parse(rle_text: &str) -> PatternIter {
-    let mut pattern = Pattern::new();
     let mut parser = Parser::new();
-    parser.parse(rle_text);
-
-    pattern.width = parser.rows[0].len();
-    pattern.height = parser.rows.len();
-
-    // TODO: modify the existing vec rather than making a new one
-    pattern.grid = vec![0; pattern.width * pattern.height];
-
-    let mut row_index = 0;
-    let mut col_index = 0;
-
-    for row in parser.rows {
-        for cell in row {
-            let i = (row_index * pattern.width) + col_index;
-            pattern.grid[i] = cell;
-
-            col_index += 1;
-            if col_index == pattern.width {
-                col_index = 0;
-                row_index += 1;
-            }
-        }
-    }
+    let pattern = parser.parse(rle_text);
 
     PatternIter::new(pattern)
 }
@@ -116,11 +93,13 @@ impl PatternIter {
         }
     }
 }
+
 pub struct Parser {
     pub rows: Vec<Vec<u8>>,
     digits: Vec<char>,
     current_row: Vec<u8>,
-    row_length: usize,
+    width: usize,
+    height: usize,
 }
 
 impl Parser {
@@ -129,17 +108,43 @@ impl Parser {
             digits: Vec::new(),
             rows: Vec::new(),
             current_row: Vec::new(),
-            row_length: 0,
+            width: 0,
+            height: 0,
         }
     }
 
-    pub fn parse(&mut self, text: &str) {
+    pub fn parse(&mut self, text: &str) -> Pattern {
         for line in text.split("\n") {
             self.parse_line(line);
         }
 
-        println!("{:?}", self.digits);
-        println!("{:?}", self.rows);
+        let mut pattern = Pattern::new();
+
+        //pattern.width = self.rows[0].len();
+        //pattern.height = self.rows.len();
+        pattern.width = self.width;
+        pattern.height = self.height;
+
+        // TODO: modify the existing vec rather than making a new one
+        pattern.grid = vec![0; pattern.width * pattern.height];
+
+        let mut row_index = 0;
+        let mut col_index = 0;
+
+        for row in &self.rows {
+            for cell in row {
+                let i = (row_index * pattern.width) + col_index;
+                pattern.grid[i] = *cell;
+
+                col_index += 1;
+                if col_index == pattern.width {
+                    col_index = 0;
+                    row_index += 1;
+                }
+            }
+        }
+
+        pattern
     }
 
     fn parse_line(&mut self, line: &str) {
@@ -147,11 +152,26 @@ impl Parser {
             println!("comment: {}", line);
         }
         else if line.starts_with('x') {
-            println!("rule: {}", line);
+            self.parse_rule_line(line);
         }
         else {
             self.parse_pattern_line(line);
         }
+    }
+
+    fn parse_rule_line(&mut self, line: &str) {
+        println!("rule: {}", line);
+        let parts: Vec<&str> = line.split(',').collect();
+
+        let x_parts: Vec<&str> = parts[0].split('=').collect();
+        let x_val = x_parts[1].trim().parse::<usize>().unwrap();
+
+        let y_parts: Vec<&str> = parts[1].split('=').collect();
+        let y_val = y_parts[1].trim().parse::<usize>().unwrap();
+
+        println!("{}, {}", x_val, y_val);
+        self.width = x_val;
+        self.height = y_val;
     }
 
     fn parse_pattern_line(&mut self, line: &str) {
@@ -160,6 +180,7 @@ impl Parser {
         //let mut row = Vec::new();
 
         for ch in line.chars() {
+            //println!("{}", ch);
             match ch {
                 'b' => {
                     let num = self.digit_val();
@@ -175,21 +196,21 @@ impl Parser {
                     }
                 },
                 '$' => {
-                    let row = self.current_row.clone();
+                    let mut row = self.current_row.clone();
                     self.current_row = Vec::new();
-                    self.row_length = row.len();
+                    self.ensure_row_len(&mut row);
                     self.rows.push(row);
+
+                    let num = self.digit_val();
+                    for _ in 1..num {
+                        let blank_row = vec![0; self.width];
+                        self.rows.push(blank_row);
+                    }
                 },
                 '!' => {
                     let mut row = self.current_row.clone();
                     self.current_row = Vec::new();
-
-                    let len = row.len();
-                    if len < self.row_length {
-                        for _ in len..self.row_length {
-                            row.push(0);
-                        }
-                    }
+                    self.ensure_row_len(&mut row);
                     self.rows.push(row);
                 },
                 digit => {
@@ -197,8 +218,18 @@ impl Parser {
                 },
             }
         }
+    }
 
-
+    fn ensure_row_len(&mut self, row: &mut Vec<u8>) {
+        let len = row.len();
+        if len < self.width {
+            for _ in len..self.width {
+                row.push(0);
+            }
+        }
+        else if len > self.width {
+            panic!("too damn long");
+        }
     }
 
     fn digit_val(&mut self) -> i32 {
@@ -223,6 +254,23 @@ mod tests {
     #[test]
     fn parser_constructor() {
         let _parser = Parser::new();
+    }
+    
+    #[test]
+    fn parse_rule_line() {
+        let rle_text = "\
+#N Glider
+#O Richard K. Guy
+#C The smallest, most common, and first discovered spaceship. Diagonal, has period 4 and speed c/4.
+#C www.conwaylife.com/wiki/index.php?title=Glider
+x = 3, y = 3, rule = B3/S23
+bob$2bo$3o!";
+
+        let mut parser = Parser::new();
+        let pattern = parser.parse(rle_text);
+        assert_eq!(pattern.width, 3);
+        assert_eq!(pattern.height, 3);
+        //assert_eq!(parser.rows, [[0, 1, 0], [0, 0, 1], [1, 1, 1]]);
     }
 
     #[test]
@@ -293,5 +341,32 @@ bob$2bo$3o!";
         assert_eq!(row.unwrap(), [1,1,1]);
         row = pattern_iter.next();
         assert_eq!(row, None);
+    }
+
+    #[test]
+    fn parse_puffer_train() {
+        let rle_text = r#"#C Puffer train
+#C This was created simply by perturbing the sides of a B-heptomino
+#C with two LWSS's. A B-heptomino is a naturally occurring object,
+#C a precursor to the Herschel pattern, which lurches forward at the
+#C speed c/2 before its own debris usually destroys it.
+#C -- Not in this case!  The LWSS escorts keep the B-heptomino alive.
+#C From Alan Hensel's "lifebc" pattern collection.
+x = 5, y = 18, rule = B3/S23
+3bo$4bo$o3bo$b4o4$o$boo$bbo$bbo$bo3$3bo$4bo$o3bo$b4o!"#;
+
+        let mut parser = Parser::new();
+        let pattern = parser.parse(rle_text);
+
+        println!("{:?}", parser.rows);
+
+        //let mut row = pattern_iter.next();
+        //assert_eq!(row.unwrap(), [0,1,0]);
+        //row = pattern_iter.next();
+        //assert_eq!(row.unwrap(), [0,0,1]);
+        //row = pattern_iter.next();
+        //assert_eq!(row.unwrap(), [1,1,1]);
+        //row = pattern_iter.next();
+        //assert_eq!(row, None);
     }
 }
